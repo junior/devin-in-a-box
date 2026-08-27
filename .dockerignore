@@ -1,0 +1,11 @@
+.git
+.gitlab
+.devin
+credentials.toml
+**/credentials.toml
+.env
+.env.*
+devin-output.txt
+devin-conversation.json
+*.atif.json
+.DS_Store

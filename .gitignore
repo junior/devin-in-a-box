@@ -1,0 +1,17 @@
+# Credentials and environment files
+credentials.toml
+**/credentials.toml
+.env
+.env.*
+!.env.example
+
+# Devin-generated output
+.devin/
+devin-output.txt
+devin-conversation.json
+*.atif.json
+
+# Local tooling
+.DS_Store
+.idea/
+.vscode/
