@@ -1,0 +1,29 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-label="Devin in a Box logo">
+  <title>Devin in a Box</title>
+  <g stroke="#1E2A3A" stroke-width="7" stroke-linejoin="round">
+    <polygon points="256,245 146,300 96,258 206,203" fill="#F0C687"/>
+    <polygon points="256,245 366,300 416,258 306,203" fill="#F0C687"/>
+    <polygon points="256,245 366,300 256,355 146,300" fill="#8A5A2B"/>
+  </g>
+  <polygon points="256,254 348,300 256,346 164,300" fill="#1B2A3E" stroke="#FFFFFF" stroke-width="8" stroke-linejoin="round"/>
+  <polyline points="228,286 252,300 228,314" fill="none" stroke="#2FBFA4" stroke-width="9" stroke-linecap="round" stroke-linejoin="round"/>
+  <rect x="262" y="308" width="26" height="9" rx="3" fill="#2FBFA4"/>
+  <g stroke="#1E2A3A" stroke-width="7" stroke-linejoin="round">
+    <polygon points="146,300 256,355 256,475 146,420" fill="#CE9350"/>
+    <polygon points="256,355 366,300 366,420 256,475" fill="#E5B36E"/>
+    <polygon points="176,325 206,340 206,368 176,353" fill="#B97E3F" stroke-width="5"/>
+    <polygon points="146,300 256,355 208,405 98,350" fill="#DFA95F"/>
+    <polygon points="366,300 256,355 304,405 414,350" fill="#DFA95F"/>
+  </g>
+  <g stroke-linecap="round">
+    <line x1="250" y1="100" x2="236" y2="146" stroke="#2563EB" stroke-width="10"/>
+    <line x1="288" y1="78" x2="306" y2="92" stroke="#2DD4A8" stroke-width="10"/>
+    <line x1="322" y1="140" x2="309" y2="154" stroke="#2DD4A8" stroke-width="10"/>
+    <line x1="196" y1="138" x2="216" y2="152" stroke="#38BDF8" stroke-width="10"/>
+  </g>
+  <polygon points="256,22 290.6,42 290.6,82 256,102 221.4,82 221.4,42" fill="#2563EB"/>
+  <polygon points="178,78 207.4,95 207.4,129 178,146 148.6,129 148.6,95" fill="#38BDF8"/>
+  <polygon points="334,72 365.2,90 365.2,126 334,144 302.8,126 302.8,90" fill="#2DD4A8"/>
+  <polygon points="232,142 256.2,156 256.2,184 232,198 207.8,184 207.8,156" fill="#38BDF8"/>
+  <polygon points="305,151 325.8,163 325.8,187 305,199 284.2,187 284.2,163" fill="#2563EB"/>
+</svg>

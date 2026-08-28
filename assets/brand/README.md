@@ -13,6 +13,16 @@ The `badge-16`, `badge-32`, `badge-128`, and `badge-512` PNGs are ready-sized
 exports. `favicon.ico` contains 16, 32, and 48 pixel variants.
 `social-preview.png` is a 1280×640 canvas ready for GitHub's social preview.
 
+Scalable companion artwork is also kept in the parent `assets` directory:
+
+- `logo.svg` is the full vector logo.
+- `logo-small.svg` is its simplified small-format variant.
+- `badge.svg` is the vector badge.
+
+The selected primary PNG and approved compact badge PNG remain the canonical
+marks; the SVGs are editable vector companions rather than exact traces of
+those raster originals.
+
 Both marks share the kraft-cardboard box, blue/teal module cluster, and navy
 outline system. Do not add detail to the badge or use the primary mark below
 approximately 96 pixels wide.

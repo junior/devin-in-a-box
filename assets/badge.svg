@@ -1,0 +1,21 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-label="Devin in a Box badge">
+  <title>Devin in a Box</title>
+  <polygon points="256,36 437.9,141 437.9,351 256,456 74.1,351 74.1,141" fill="#2563EB" stroke="#2563EB" stroke-width="40" stroke-linejoin="round"/>
+  <polygon points="256,68 410.1,157 410.1,335 256,424 101.9,335 101.9,157" fill="#16233A" stroke="#16233A" stroke-width="20" stroke-linejoin="round"/>
+  <g stroke="#0F1B2D" stroke-width="5" stroke-linejoin="round">
+    <polygon points="256,269 194,300 166,276 228,245" fill="#F0C687"/>
+    <polygon points="256,269 318,300 346,276 284,245" fill="#F0C687"/>
+    <polygon points="256,269 318,300 256,331 194,300" fill="#8A5A2B"/>
+    <polygon points="194,300 256,331 256,393 194,362" fill="#CE9350"/>
+    <polygon points="256,331 318,300 318,362 256,393" fill="#E5B36E"/>
+  </g>
+  <g stroke="#FFFFFF" stroke-width="9" stroke-linecap="round">
+    <line x1="224" y1="170" x2="206" y2="182"/>
+    <line x1="288" y1="170" x2="304" y2="180"/>
+  </g>
+  <g stroke="#FFFFFF" stroke-width="9" stroke-linejoin="round">
+    <polygon points="256,96 295.8,119 295.8,165 256,188 216.2,165 216.2,119" fill="#2563EB"/>
+    <polygon points="200,172 229.4,189 229.4,223 200,240 170.6,223 170.6,189" fill="#2DD4A8"/>
+    <polygon points="310,170 339.4,187 339.4,221 310,238 280.6,221 280.6,187" fill="#38BDF8"/>
+  </g>
+</svg>
