@@ -61,7 +61,7 @@ jobs:
             latest=auto
 
       - name: Build and publish
-        uses: docker/build-push-action@v6
+        uses: docker/build-push-action@v7
         with:
           context: .
           platforms: linux/amd64,linux/arm64
@@ -91,7 +91,7 @@ jobs:
             latest=false
 
       - name: Build and publish Docker Sandbox image
-        uses: docker/build-push-action@v6
+        uses: docker/build-push-action@v7
         with:
           context: .
           file: sandbox.Dockerfile
