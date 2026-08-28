@@ -1,0 +1,67 @@
+schemaVersion: "2"
+kind: sandbox
+name: devin
+version: 0.2.0
+displayName: Devin CLI
+description: Devin CLI as a Docker Sandboxes custom agent with restricted network egress.
+sourceURL: https://github.com/junior/devin-in-a-box
+licenses:
+  - MIT
+locked:
+  - sandbox.image
+
+sandbox:
+  image: docker.io/junior/devin-in-a-box:sandbox
+  entrypoint:
+    - devin
+  command:
+    default: []
+    interactive: []
+
+# Only the Devin runtime endpoints documented in FIREWALL.md, plus the two
+# enterprise tenant patterns. Effective only when the global policy is not
+# allow-all; see the README. Legacy Windsurf login hosts (*.windsurf.com,
+# *.codeiumdata.com, *.googleapis.com, apis.google.com) are intentionally
+# omitted now that Windsurf is deprecated; re-add them per sandbox if your
+# organization still uses that login path. Error telemetry (Sentry) is also
+# intentionally not allowlisted.
+permissions:
+  network:
+    allow:
+      - api.devin.ai
+      - app.devin.ai
+      - static.devin.ai
+      - server.codeium.com
+      - unleash.codeium.com
+      - "*.enterprise.windsurf.com"
+      - "*.devinenterprise.com"
+
+environment:
+  variables:
+    DEVIN_MODEL: swe-1.6
+
+setup:
+  startup:
+    # Gateway-first MCP registration, same pattern as Docker's built-in agent
+    # kits: sandboxd injects MCP_GATEWAY_URL and MCP_SENTINEL_TOKEN_NAME when a
+    # gateway is reserved. The sentinel name is not a credential; the proxy
+    # substitutes the real token at request time. No-op when MCP is not
+    # enabled. Remove-then-add keeps the entry current when the gateway URL
+    # changes between boots.
+    # The dispatcher runs this with a minimal PATH and possibly no HOME, so
+    # the binary path is absolute and HOME is set for --scope user.
+    - command:
+        - sh
+        - -c
+        - |
+          set -e
+          [ -n "$MCP_GATEWAY_URL" ] || exit 0
+          export HOME="${HOME:-/home/agent}"
+          devin=/home/agent/.local/bin/devin
+          [ -x "$devin" ] || exit 0
+          "$devin" mcp remove --scope user mcp-gateway >/dev/null 2>&1 || true
+          "$devin" mcp add --scope user --transport http \
+            -H "Authorization: Bearer $MCP_SENTINEL_TOKEN_NAME" \
+            mcp-gateway "$MCP_GATEWAY_URL" >/dev/null
+      user: "1000"
+      description: Register the sandbox MCP gateway with Devin CLI

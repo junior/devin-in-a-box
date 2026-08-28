@@ -1,0 +1,103 @@
+#!/usr/bin/env bash
+set -Eeuo pipefail
+
+# Create (or reuse) a Devin Docker Sandbox from the kit, place the Devin
+# credentials inside it, and attach.
+#
+# Docker Sandboxes' proxy-managed credential injection rewrites HTTP request
+# headers only, while Devin CLI's wire protocol also embeds the API key inside
+# each protobuf request body. The backend authenticates against the body copy,
+# so header-only injection always yields "401 invalid api key". Until that
+# changes on either side, the supported model is: copy the credentials file
+# into the sandbox, and let the sandbox's network allowlist restrict where the
+# credential can travel.
+
+script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+
+die() {
+  printf 'devin-sandbox: %s\n' "$*" >&2
+  exit 2
+}
+
+usage() {
+  cat >&2 <<'EOF'
+Usage: devin-sandbox [options] [WORKSPACE...]
+
+Options:
+  --credentials PATH  Devin credentials.toml to copy into the sandbox
+                      (default: $XDG_DATA_HOME/devin/credentials.toml,
+                       falling back to ~/.local/share/devin/credentials.toml)
+  --name NAME         Sandbox name (default: devin-<workspace basename>)
+  --kit DIR           Kit directory (default: sandbox-kit next to this script)
+  --refresh           Only (re)copy credentials into the sandbox, then exit
+  --no-attach         Create and provision the sandbox without attaching
+  -h, --help          Show this help
+
+WORKSPACE defaults to the current directory. Extra workspaces and ":ro"
+suffixes are passed through to "sbx run" unchanged.
+EOF
+  exit 2
+}
+
+credentials=""
+name=""
+kit="$script_dir/../sandbox-kit"
+refresh=false
+attach=true
+workspaces=()
+
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --credentials) [[ $# -ge 2 ]] || usage; credentials="$2"; shift 2 ;;
+    --name)        [[ $# -ge 2 ]] || usage; name="$2"; shift 2 ;;
+    --kit)         [[ $# -ge 2 ]] || usage; kit="$2"; shift 2 ;;
+    --refresh)     refresh=true; shift ;;
+    --no-attach)   attach=false; shift ;;
+    -h|--help)     usage ;;
+    --)            shift; workspaces+=("$@"); break ;;
+    -*)            usage ;;
+    *)             workspaces+=("$1"); shift ;;
+  esac
+done
+
+command -v sbx >/dev/null 2>&1 || die "sbx CLI not found; install Docker Sandboxes first"
+
+if [[ -z "$credentials" ]]; then
+  credentials="${XDG_DATA_HOME:-$HOME/.local/share}/devin/credentials.toml"
+fi
+[[ -r "$credentials" ]] || die "cannot read credentials file: $credentials
+Authenticate once on a trusted machine (devin auth login) or pass --credentials PATH."
+
+[[ ${#workspaces[@]} -gt 0 ]] || workspaces=(".")
+primary="${workspaces[0]%%:*}"
+[[ -d "$primary" ]] || die "workspace is not a directory: $primary"
+
+if [[ -z "$name" ]]; then
+  name="devin-$(basename "$(cd "$primary" && pwd)")"
+fi
+
+sandbox_exists() {
+  sbx ls 2>/dev/null | awk 'NR > 1 { print $1 }' | grep -Fxq "$name"
+}
+
+if ! sandbox_exists; then
+  $refresh && die "sandbox $name does not exist; run without --refresh first"
+  [[ -f "$kit/spec.yaml" ]] || die "kit directory not found: $kit"
+  sbx run --detached --kit "$kit" --name "$name" devin "${workspaces[@]}"
+fi
+
+# Place the credentials where Devin CLI reads them. sbx cp preserves host
+# ownership, so fix owner and mode as root afterwards. Copying the whole file
+# keeps this compatible with both the current and the pre-deprecation Windsurf
+# credential formats.
+target=/home/agent/.local/share/devin/credentials.toml
+sbx exec "$name" -- sh -c "mkdir -p ${target%/*}"
+sbx cp "$credentials" "$name:$target"
+sbx exec -u 0 "$name" -- sh -c "chown agent:agent $target && chmod 600 $target"
+printf 'devin-sandbox: credentials installed in %s\n' "$name" >&2
+
+if $refresh || ! $attach; then
+  exit 0
+fi
+
+exec sbx run --name "$name"
