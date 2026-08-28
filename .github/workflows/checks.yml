@@ -16,7 +16,7 @@ jobs:
       SBX_VERSION: v0.39.0
       SBX_LINUX_AMD64_SHA256: 2ec45bc7938c20c2f406fe8cc72294ad5a954bdc047601484b89bf1a108311d4
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7
       - name: Validate entrypoint
         run: bash -n docker-entrypoint.sh
       - name: Validate sandbox launcher
@@ -49,6 +49,6 @@ jobs:
   sandbox-image:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7
       - name: Build Docker Sandbox image
         run: docker build --file sandbox.Dockerfile --tag devin-in-a-box:sandbox-check .
