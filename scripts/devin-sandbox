@@ -48,15 +48,18 @@ workspaces=()
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
-    --credentials) [[ $# -ge 2 ]] || usage; credentials="$2"; shift 2 ;;
-    --name)        [[ $# -ge 2 ]] || usage; name="$2"; shift 2 ;;
-    --kit)         [[ $# -ge 2 ]] || usage; kit="$2"; shift 2 ;;
-    --refresh)     refresh=true; shift ;;
-    --no-attach)   attach=false; shift ;;
-    -h|--help)     usage ;;
-    --)            shift; workspaces+=("$@"); break ;;
-    -*)            usage ;;
-    *)             workspaces+=("$1"); shift ;;
+    --credentials|-credentials) [[ $# -ge 2 ]] || die "$1 requires a value"; credentials="$2"; shift 2 ;;
+    --credentials=*|-credentials=*) credentials="${1#*=}"; shift ;;
+    --name|-name)               [[ $# -ge 2 ]] || die "$1 requires a value"; name="$2"; shift 2 ;;
+    --name=*|-name=*)           name="${1#*=}"; shift ;;
+    --kit|-kit)                 [[ $# -ge 2 ]] || die "$1 requires a value"; kit="$2"; shift 2 ;;
+    --kit=*|-kit=*)             kit="${1#*=}"; shift ;;
+    --refresh|-refresh)         refresh=true; shift ;;
+    --no-attach|-no-attach)     attach=false; shift ;;
+    -h|--help|-help)            usage ;;
+    --)                         shift; workspaces+=("$@"); break ;;
+    -*)                         printf 'devin-sandbox: unknown option: %s\n\n' "$1" >&2; usage ;;
+    *)                          workspaces+=("$1"); shift ;;
   esac
 done
 
