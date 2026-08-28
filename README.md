@@ -106,7 +106,7 @@ Input precedence is `DEVIN_PROMPT_FILE`, then `DEVIN_PROMPT`, then stdin.
 ## Docker Sandboxes
 
 The repository includes a [Docker Sandboxes](https://docs.docker.com/ai/sandboxes/)
-custom-agent image (`sandbox.Dockerfile`, published under `sandbox-0.2.0` and
+custom-agent image (`sandbox.Dockerfile`, published under `sandbox-0.2.1` and
 the rolling `sandbox` tag)
 and a v2 kit (`sandbox-kit/`). This variant uses Docker's required `shell`
 base and `agent` user; the regular CI image continues to use Docker Hardened
@@ -117,7 +117,7 @@ governance policy.
 Build the sandbox image locally and validate the kit:
 
 ```bash
-docker build --file sandbox.Dockerfile --tag junior/devin-in-a-box:sandbox-0.2.0 .
+docker build --file sandbox.Dockerfile --tag junior/devin-in-a-box:sandbox-0.2.1 .
 ```
 
 ```bash

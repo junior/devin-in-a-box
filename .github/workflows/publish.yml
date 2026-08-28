@@ -36,8 +36,8 @@ jobs:
         uses: docker/login-action@v4
         with:
           registry: ghcr.io
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
+          username: ${{ secrets.GHCR_USERNAME }}
+          password: ${{ secrets.GHCR_TOKEN }}
 
       - name: Sign in to Docker Hub
         uses: docker/login-action@v4
@@ -47,7 +47,7 @@ jobs:
 
       - name: Generate image metadata
         id: meta
-        uses: docker/metadata-action@v5
+        uses: docker/metadata-action@v6
         with:
           images: |
             ghcr.io/${{ github.repository }}
@@ -78,7 +78,7 @@ jobs:
 
       - name: Generate Docker Sandbox image metadata
         id: sandbox-meta
-        uses: docker/metadata-action@v5
+        uses: docker/metadata-action@v6
         with:
           images: |
             ghcr.io/${{ github.repository }}

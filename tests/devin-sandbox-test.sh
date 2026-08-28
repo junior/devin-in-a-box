@@ -5,6 +5,7 @@ repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 launcher="$repo_root/scripts/devin-sandbox"
 test_root="$(mktemp -d)"
 trap 'rm -rf "$test_root"' EXIT
+test_root="$(cd "$test_root" && pwd -P)"
 
 mkdir -p "$test_root/bin" "$test_root/state" "$test_root/My_Project"
 printf 'test credential\n' > "$test_root/credentials.toml"
