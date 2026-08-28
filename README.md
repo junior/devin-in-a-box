@@ -1,6 +1,8 @@
 <div align="center">
 
-# 📦 Devin in a Box
+<img src="assets/brand/devin-in-a-box-primary.png" alt="Devin in a Box logo" width="240">
+
+# Devin in a Box
 
 **Run Devin CLI safely and non-interactively in containers and CI pipelines.**
 
