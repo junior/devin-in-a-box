@@ -4,6 +4,7 @@
     "setup_complete": true
   },
   "theme_mode": "dark",
-  "attribution": false
+  "attribution": false,
+  "skip_workspace_trust": true
 }
 

@@ -142,10 +142,17 @@ Resetting is machine-wide: it deletes local policy rules, stops running
 sandboxes, and affects every sandbox on the host. Review the impact before
 confirming it.
 
-The launcher verifies that `example.com` is denied by the effective sandbox
-policy before copying credentials. It refuses to continue if non-kit egress is
-available. `--allow-unrestricted-egress` is an explicit escape hatch for a
-trusted test environment; it weakens the credential containment model.
+Before copying credentials into a sandbox, confirm that non-kit egress is
+denied:
+
+```bash
+sbx policy check network --sandbox devin-myrepo example.com
+```
+
+The optional launcher script performs this check automatically and refuses to
+copy credentials while non-kit egress is reachable;
+`--allow-unrestricted-egress` is its explicit escape hatch for a trusted test
+environment and weakens the credential containment model.
 
 Audit decisions with `sbx policy log <sandbox>`; blocked hosts appear as
 "No matching allow rule (default deny)".
@@ -174,32 +181,58 @@ keep additional egress narrow, and remove sandboxes that no longer need access.
 
 ### Run Devin as a sandbox agent
 
+The whole flow is standard `sbx` commands; the only Devin-specific step is
+placing the credential file. Create the sandbox from the kit:
+
+```bash
+sbx create --kit ./sandbox-kit --name devin-myrepo devin ~/src/your-repo
+```
+
+Copy your credentials to Devin's data path inside the sandbox:
+
+```bash
+sbx cp ~/.local/share/devin/credentials.toml devin-myrepo:/home/agent/.local/share/devin/credentials.toml
+```
+
+Hand the file to the sandbox user with a restrictive mode:
+
+```bash
+sbx exec -u 0 devin-myrepo -- sh -c 'chown agent:agent /home/agent/.local/share/devin/credentials.toml && chmod 600 /home/agent/.local/share/devin/credentials.toml'
+```
+
+Attach to the interactive Devin session:
+
+```bash
+sbx run --name devin-myrepo
+```
+
+Or run one-shot prompts non-interactively:
+
+```bash
+sbx exec devin-myrepo -- devin --print -- 'Summarize this repository.'
+```
+
+No extra flags are needed: the kit already selects `swe-1.6` through
+`DEVIN_MODEL` (override it with `sbx run --env DEVIN_MODEL=your-model`) and
+skips Devin's workspace-trust prompt, since the sandbox itself is the trust
+boundary. Because the credential file is copied verbatim, both the current
+format (`devin_api_url`, `devin_webapp_host`) and the pre-deprecation Windsurf
+format work, including enterprise `api_server_url` values.
+
+#### Optional launcher script
+
+[scripts/devin-sandbox](scripts/devin-sandbox) automates the same sequence:
+create or safely reuse the sandbox, install the credentials, and attach. On
+top of the plain commands it verifies default-deny egress before copying the
+credential (fail closed) and derives collision-free sandbox names from the
+workspace path:
+
 ```bash
 ./scripts/devin-sandbox ~/src/your-repo
 ```
 
-The script creates the sandbox from the kit (or safely reuses one whose agent
-and canonical workspace match), copies
-`~/.local/share/devin/credentials.toml` into
-`/home/agent/.local/share/devin/credentials.toml` with owner `agent` and mode
-`600`, and attaches. Use `--credentials PATH` for a different file,
-`--refresh` to update the credential in an existing sandbox, and
-`--no-attach` for scripted setups. Default names include a hash of the canonical
-workspace path to prevent same-basename collisions. Because the file is copied
-verbatim, both the current credential format (`devin_api_url`,
-`devin_webapp_host`) and the pre-deprecation Windsurf format work, including
-enterprise `api_server_url` values, with no extra environment variables needed.
-
-Run one-shot prompts non-interactively with `sbx exec`:
-
-```bash
-./scripts/devin-sandbox --name devin-your-repo --no-attach ~/src/your-repo
-sbx exec devin-your-repo -- devin --model swe-1.6 --print -- 'Summarize this repository.'
-```
-
-The kit defaults to `swe-1.6`; override with
-`sbx run --env DEVIN_MODEL=your-model --name devin-your-repo` when your
-included model changes.
+Use `--credentials PATH` for a different file, `--refresh` to update the
+credential in an existing sandbox, and `--no-attach` for scripted setups.
 
 ### MCP gateway
 
@@ -212,10 +245,11 @@ through the gateway tools. You can also attach a registration from the host:
 sbx mcp load notion --sandbox devin-your-repo
 ```
 
-To preload a fixed set when creating the sandbox, pass a comma-separated list:
+To preload a fixed set when creating the sandbox, pass a comma-separated list
+(the launcher script forwards the same flag):
 
 ```bash
-./scripts/devin-sandbox --static-mcp notion,linear ~/src/your-repo
+sbx create --kit ./sandbox-kit --static-mcp notion,linear --name devin-myrepo devin ~/src/your-repo
 ```
 
 The static set cannot be changed by reattaching; use `sbx mcp load` for an
