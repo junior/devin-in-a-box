@@ -20,6 +20,7 @@ die() {
 }
 
 usage() {
+  status="${1:-2}"
   cat >&2 <<'EOF'
 Usage: devin-sandbox [options] [WORKSPACE...]
 
@@ -27,16 +28,19 @@ Options:
   -c, --credentials PATH  Devin credentials.toml to copy into the sandbox
                           (default: $XDG_DATA_HOME/devin/credentials.toml,
                            falling back to ~/.local/share/devin/credentials.toml)
-  -n, --name NAME         Sandbox name (default: devin-<workspace basename>)
+  -n, --name NAME         Sandbox name (default: devin-<workspace>-<path hash>)
   -k, --kit DIR           Kit directory (default: sandbox-kit next to this script)
+      --static-mcp NAMES   Preload comma-separated MCP servers (new sandboxes only)
       --refresh           Only (re)copy credentials into the sandbox, then exit
       --no-attach         Create and provision the sandbox without attaching
+      --allow-unrestricted-egress
+                          Copy credentials even when non-kit egress is allowed
   -h, --help              Show this help
 
 WORKSPACE defaults to the current directory. Extra workspaces and ":ro"
-suffixes are passed through to "sbx run" unchanged.
+suffixes are passed through to "sbx create" unchanged.
 EOF
-  exit 2
+  exit "$status"
 }
 
 credentials=""
@@ -44,6 +48,8 @@ name=""
 kit="$script_dir/../sandbox-kit"
 refresh=false
 attach=true
+allow_unrestricted_egress=false
+static_mcp=()
 workspaces=()
 
 while [[ $# -gt 0 ]]; do
@@ -54,9 +60,12 @@ while [[ $# -gt 0 ]]; do
     --name=*)          name="${1#*=}"; shift ;;
     -k|--kit)          [[ $# -ge 2 ]] || die "$1 requires a value"; kit="$2"; shift 2 ;;
     --kit=*)           kit="${1#*=}"; shift ;;
+    --static-mcp)      [[ $# -ge 2 ]] || die "$1 requires a value"; static_mcp+=("$2"); shift 2 ;;
+    --static-mcp=*)    static_mcp+=("${1#*=}"); shift ;;
     --refresh)         refresh=true; shift ;;
     --no-attach)       attach=false; shift ;;
-    -h|--help)         usage ;;
+    --allow-unrestricted-egress) allow_unrestricted_egress=true; shift ;;
+    -h|--help)         usage 0 ;;
     --)                shift; workspaces+=("$@"); break ;;
     -*)                printf 'devin-sandbox: unknown option: %s\n\n' "$1" >&2; usage ;;
     *)                 workspaces+=("$1"); shift ;;
@@ -74,29 +83,80 @@ Authenticate once on a trusted machine (devin auth login) or pass --credentials 
 [[ ${#workspaces[@]} -gt 0 ]] || workspaces=(".")
 primary="${workspaces[0]%%:*}"
 [[ -d "$primary" ]] || die "workspace is not a directory: $primary"
+canonical_primary="$(cd "$primary" && pwd -P)"
 
 if [[ -z "$name" ]]; then
-  name="devin-$(basename "$(cd "$primary" && pwd)")"
+  workspace_slug="$(basename "$canonical_primary" | tr '[:upper:]' '[:lower:]' \
+    | sed -E 's/[^a-z0-9.-]+/-/g; s/^[^a-z0-9]+//; s/[^a-z0-9]+$//')"
+  [[ -n "$workspace_slug" ]] || workspace_slug=workspace
+  read -r workspace_hash _ < <(printf '%s' "$canonical_primary" | cksum)
+  name="devin-${workspace_slug:0:32}-${workspace_hash}"
 fi
+
+[[ ${#name} -ge 2 && "$name" =~ ^[A-Za-z0-9][A-Za-z0-9.-]*$ ]] \
+  || die "invalid sandbox name: $name (use letters, numbers, dots, and hyphens)"
 
 sandbox_exists() {
-  sbx ls 2>/dev/null | awk 'NR > 1 { print $1 }' | grep -Fxq "$name"
+  sbx inspect "$name" >/dev/null 2>&1
 }
 
-if ! sandbox_exists; then
+created=false
+if sandbox_exists; then
+  [[ ${#static_mcp[@]} -eq 0 ]] \
+    || die "--static-mcp can only be selected when creating a sandbox"
+
+  sandbox_summary="$(sbx inspect "$name")" \
+    || die "cannot inspect existing sandbox: $name"
+  existing_agent="$(printf '%s\n' "$sandbox_summary" \
+    | sed -nE 's/^[[:space:]]*Agent:[[:space:]]+//p')"
+  existing_workspace="$(printf '%s\n' "$sandbox_summary" \
+    | sed -nE 's/^[[:space:]]*Workspace:[[:space:]]+//p')"
+  [[ "$existing_agent" == devin ]] \
+    || die "sandbox $name uses agent $existing_agent, not devin"
+  [[ "$existing_workspace" == "$canonical_primary" ]] \
+    || die "sandbox $name belongs to $existing_workspace, not $canonical_primary"
+else
   $refresh && die "sandbox $name does not exist; run without --refresh first"
   [[ -f "$kit/spec.yaml" ]] || die "kit directory not found: $kit"
-  sbx run --detached --kit "$kit" --name "$name" devin "${workspaces[@]}"
+  create_args=(create --kit "$kit" --name "$name")
+  for servers in "${static_mcp[@]}"; do
+    create_args+=(--static-mcp "$servers")
+  done
+  sbx "${create_args[@]}" devin "${workspaces[@]}"
+  created=true
 fi
 
-# Place the credentials where Devin CLI reads them. sbx cp preserves host
-# ownership, so fix owner and mode as root afterwards. Copying the whole file
-# keeps this compatible with both the current and the pre-deprecation Windsurf
-# credential formats.
+# The credentials are intentionally container-resident because Devin embeds
+# its API key in protobuf request bodies. Fail closed unless a destination not
+# declared by the kit is denied by the sandbox's effective policy.
+policy_result="$(sbx policy check network --sandbox "$name" --json example.com)" \
+  || die "cannot verify the effective network policy for $name"
+if printf '%s\n' "$policy_result" | grep -Eq '"allowed"[[:space:]]*:[[:space:]]*true'; then
+  if ! $allow_unrestricted_egress; then
+    if $created; then
+      sbx rm --force "$name" >/dev/null 2>&1 \
+        || printf 'devin-sandbox: WARNING: could not remove rejected sandbox %s\n' "$name" >&2
+    fi
+    die "sandbox $name can reach non-kit destinations; refusing to copy credentials
+Initialize a default-deny policy, or pass --allow-unrestricted-egress to accept the risk."
+  fi
+  printf 'devin-sandbox: WARNING: copying credentials with unrestricted egress enabled\n' >&2
+fi
+
+# Place the credentials where Devin CLI reads them. Stage the file, then install
+# it as agent with restrictive directory and file modes. The file is copied
+# verbatim rather than parsed or converted on the host; that keeps this
+# compatible with both the current and pre-deprecation Windsurf formats.
 target=/home/agent/.local/share/devin/credentials.toml
-sbx exec "$name" -- sh -c "mkdir -p ${target%/*}"
-sbx cp "$credentials" "$name:$target"
-sbx exec -u 0 "$name" -- sh -c "chown agent:agent $target && chmod 600 $target"
+temporary_target="/tmp/devin-credentials-$$.toml"
+sbx cp --follow-link "$credentials" "$name:$temporary_target"
+sbx exec -u 0 "$name" -- sh -c '
+  status=0
+  install -d -m 700 -o agent -g agent "$(dirname "$2")" \
+    && install -m 600 -o agent -g agent "$1" "$2" || status=$?
+  rm -f "$1"
+  exit "$status"
+' sh "$temporary_target" "$target"
 printf 'devin-sandbox: credentials installed in %s\n' "$name" >&2
 
 if $refresh || ! $attach; then

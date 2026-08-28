@@ -31,7 +31,7 @@ ENV PATH=/home/agent/.local/bin:/usr/local/bin:/usr/bin:/bin \
     XDG_DATA_HOME=/home/agent/.local/share
 
 # The official installer ends by launching its interactive setup wizard.
-# Authentication is supplied later by the Docker Sandboxes host proxy.
+# Authentication is provisioned later by scripts/devin-sandbox.
 RUN curl --fail --silent --show-error --location "$DEVIN_INSTALL_URL" --output /tmp/devin-install.sh \
     && sed -i '/^"\$VERSION_DIR\/bin\/\$COMPILED_BIN_NAME" setup$/d' /tmp/devin-install.sh \
     && bash /tmp/devin-install.sh \

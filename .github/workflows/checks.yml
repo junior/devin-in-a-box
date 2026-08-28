@@ -12,13 +12,43 @@ permissions:
 jobs:
   static:
     runs-on: ubuntu-latest
+    env:
+      SBX_VERSION: v0.39.0
+      SBX_LINUX_AMD64_SHA256: 2ec45bc7938c20c2f406fe8cc72294ad5a954bdc047601484b89bf1a108311d4
     steps:
       - uses: actions/checkout@v4
       - name: Validate entrypoint
         run: bash -n docker-entrypoint.sh
       - name: Validate sandbox launcher
         run: bash -n scripts/devin-sandbox
-      - name: Validate sandbox kit spec YAML
-        run: python3 -c 'import sys, yaml; yaml.safe_load(open("sandbox-kit/spec.yaml"))'
+      - name: Test sandbox launcher
+        run: tests/devin-sandbox-test.sh
+      - name: Cache sbx kit validator
+        id: cache-sbx
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/sbx/${{ env.SBX_VERSION }}/sbx
+          key: sbx-validator-linux-amd64-${{ env.SBX_VERSION }}
+      - name: Install pinned sbx kit validator
+        if: steps.cache-sbx.outputs.cache-hit != 'true'
+        run: |
+          archive="$RUNNER_TEMP/sbx.tar.gz"
+          destination="$HOME/.cache/sbx/$SBX_VERSION"
+          curl --fail --silent --show-error --location \
+            "https://github.com/docker/sbx-releases/releases/download/$SBX_VERSION/DockerSandboxes-linux-amd64.tar.gz" \
+            --output "$archive"
+          printf '%s  %s\n' "$SBX_LINUX_AMD64_SHA256" "$archive" | sha256sum --check
+          mkdir -p "$destination"
+          tar -xzf "$archive" --strip-components=1 -C "$destination" docker-sbx/sbx
+          chmod 755 "$destination/sbx"
+      - name: Validate sandbox kit schema
+        run: $HOME/.cache/sbx/$SBX_VERSION/sbx kit validate ./sandbox-kit
       - name: Validate JSON
         run: jq empty devin-config.json sandbox-kit/files/home/.config/devin/config.json
+
+  sandbox-image:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build Docker Sandbox image
+        run: docker build --file sandbox.Dockerfile --tag devin-in-a-box:sandbox-check .

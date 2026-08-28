@@ -11,7 +11,7 @@ locked:
   - sandbox.image
 
 sandbox:
-  image: docker.io/junior/devin-in-a-box:sandbox
+  image: docker.io/junior/devin-in-a-box:sandbox-0.2.0
   entrypoint:
     - devin
   command:
