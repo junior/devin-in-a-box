@@ -13,16 +13,12 @@ jobs:
   static:
     runs-on: ubuntu-latest
     env:
-      SBX_VERSION: v0.39.0
-      SBX_LINUX_AMD64_SHA256: 2ec45bc7938c20c2f406fe8cc72294ad5a954bdc047601484b89bf1a108311d4
+      SBX_VERSION: v0.42.1
+      SBX_LINUX_AMD64_SHA256: fe46facba420d1cb8b1dad57d5b182d6df9dadd46c324c2ca3ef574fb7eada6f
     steps:
       - uses: actions/checkout@v7
       - name: Validate entrypoint
         run: bash -n docker-entrypoint.sh
-      - name: Validate sandbox launcher
-        run: bash -n scripts/devin-sandbox
-      - name: Test sandbox launcher
-        run: tests/devin-sandbox-test.sh
       - name: Cache sbx kit validator
         id: cache-sbx
         uses: actions/cache@v5
@@ -45,10 +41,3 @@ jobs:
         run: $HOME/.cache/sbx/$SBX_VERSION/sbx kit validate ./sandbox-kit
       - name: Validate JSON
         run: jq empty devin-config.json sandbox-kit/files/home/.config/devin/config.json
-
-  sandbox-image:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v7
-      - name: Build Docker Sandbox image
-        run: docker build --file sandbox.Dockerfile --tag devin-in-a-box:sandbox-check .

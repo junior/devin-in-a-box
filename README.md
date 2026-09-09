@@ -107,167 +107,134 @@ Input precedence is `DEVIN_PROMPT_FILE`, then `DEVIN_PROMPT`, then stdin.
 
 ## Docker Sandboxes
 
-The repository includes a [Docker Sandboxes](https://docs.docker.com/ai/sandboxes/)
-custom-agent image (`sandbox.Dockerfile`, published under `sandbox-0.2.1` and
-the rolling `sandbox` tag)
-and a v2 kit (`sandbox-kit/`). This variant uses Docker's required `shell`
-base and `agent` user; the regular CI image continues to use Docker Hardened
-Debian 13. It intentionally omits a nested Docker daemon. If a task needs
-Docker itself, evaluate the heavier `shell-docker` base for your host and
-governance policy.
+[Docker Sandboxes](https://docs.docker.com/ai/sandboxes/) ships a built-in
+[`devin` agent](https://docs.docker.com/ai/sandboxes/agents/devin/) as of
+`sbx` 0.42, so no custom image, agent kit, or launcher script is needed
+anymore. The built-in agent provides the template image, the credential
+capture and injection, the Devin runtime allowlist, and the MCP gateway
+registration. This repository adds an optional mixin kit with the defaults
+this project cares about.
 
-Build the sandbox image locally and validate the kit:
+### Run Devin in a sandbox
 
 ```bash
-docker build --file sandbox.Dockerfile --tag junior/devin-in-a-box:sandbox-0.2.1 .
+sbx run devin ~/src/your-repo
+```
+
+On the first run Devin asks you to sign in inside the sandbox: open the printed
+`app.devin.ai` link, then paste the code back. Docker Sandboxes captures the
+resulting credential on the host as the `devin` service secret and provisions
+every later sandbox with it automatically. Re-attach later with
+`sbx run --name devin-your-repo`.
+
+If this machine already has a `credentials.toml`, seed the secret instead of
+signing in interactively:
+
+```bash
+sed -nE 's/^windsurf_api_key = "([^"]+)"/\1/p' ~/.local/share/devin/credentials.toml | sbx secret set devin
+```
+
+### One-shot prompts
+
+Create the sandbox without attaching, then run prompts with `sbx exec`:
+
+```bash
+sbx create --name devin-your-repo devin ~/src/your-repo
 ```
 
 ```bash
-sbx kit validate ./sandbox-kit
+sbx exec devin-your-repo -- devin --respect-workspace-trust=false --print -- 'Summarize this repository.'
 ```
 
-### One-time: make the allowlist enforceable
+The built-in agent passes `--respect-workspace-trust=false` in its own
+interactive entrypoint; `sbx exec` bypasses the entrypoint, so the flag is
+repeated here. With the mixin below it is not needed.
 
-A kit can only *add* allow rules on top of the machine's global policy. Choose
+### Optional mixin: project defaults
+
+`sandbox-kit/` is a mixin that layers this project's defaults on the built-in
+agent:
+
+- `DEVIN_MODEL=swe-1.6` for predictable cost (override with
+  `--env DEVIN_MODEL=your-model`);
+- the enterprise tenant hosts `*.enterprise.windsurf.com` and
+  `*.devinenterprise.com` in the allowlist, to pair with
+  `--env WINDSURF_API_SERVER_URL=https://your-tenant`;
+- a Devin config that skips the first-run wizard and the workspace-trust
+  prompt, disables commit attribution, and keeps Docker's `auto_update=false`.
+
+```bash
+sbx run --kit ./sandbox-kit devin ~/src/your-repo
+```
+
+With the mixin, one-shot prompts need no flags:
+
+```bash
+sbx exec devin-your-repo -- devin --print -- 'Summarize this repository.'
+```
+
+The mixin only takes effect when the sandbox is created. Validate it with
+`sbx kit validate ./sandbox-kit`.
+
+### How the credential is handled
+
+Devin CLI's wire protocol embeds the API key inside each request body, so the
+sandbox proxy cannot keep the key on the host and inject it into headers the
+way it does for other agents. Docker's agent instead captures the token during
+the in-sandbox login, stores it on the host, and renders it into
+`~/.local/share/devin/credentials.toml` inside each new sandbox. The
+credential therefore resides in the sandbox filesystem, readable by Devin and
+by any process running as `agent` or root in that microVM. The sandbox network
+policy is what confines it: only the Devin endpoints in the built-in allowlist
+(plus the Ubuntu package mirrors and `download.docker.com`) are reachable.
+Every additional host you allow is another possible destination for the
+credential, so keep task-specific egress narrow, prefer short-lived
+credentials, and remove sandboxes that no longer need access.
+
+### Make the allowlist enforceable
+
+A kit can only add allow rules on top of the machine's global policy. Choose
 default-deny when Docker Sandboxes asks for the initial global policy, or
-initialize a new, unconfigured installation explicitly:
+initialize a new installation explicitly:
 
 ```bash
 sbx policy init deny-all
 ```
 
-`sbx policy init` is a one-time command. To replace an existing allow-all or
-balanced policy, first run `sbx policy reset`, then initialize default-deny.
-Resetting is machine-wide: it deletes local policy rules, stops running
-sandboxes, and affects every sandbox on the host. Review the impact before
-confirming it.
-
-Before copying credentials into a sandbox, confirm that non-kit egress is
-denied:
+`sbx policy init` is a one-time command; to replace an existing allow-all or
+balanced policy, run `sbx policy reset` first. Resetting is machine-wide and
+stops running sandboxes, so review the impact before confirming. Verify a
+sandbox before trusting it with credentials, and audit decisions afterwards:
 
 ```bash
-sbx policy check network --sandbox devin-myrepo example.com
+sbx policy check network --sandbox devin-your-repo example.com
 ```
-
-The optional launcher script performs this check automatically and refuses to
-copy credentials while non-kit egress is reachable;
-`--allow-unrestricted-egress` is its explicit escape hatch for a trusted test
-environment and weakens the credential containment model.
-
-Audit decisions with `sbx policy log <sandbox>`; blocked hosts appear as
-"No matching allow rule (default deny)".
-
-### Why the credential is copied into the sandbox
-
-Do not register Devin credentials through `sbx secret` placeholders. Docker
-Sandboxes injects credentials into HTTP request *headers* only, while Devin
-CLI's wire protocol additionally embeds the API key inside each protobuf
-request *body*. The backend authenticates against the body copy, so
-header-only injection always produces `401 invalid api key` (verified by
-replaying sandbox traffic with only the `Authorization` header rewritten).
-Proxy-managed secrets for other services (for example `sbx secret set github`)
-are unaffected; the limitation is specific to Devin's own protocol.
-
-Until Docker or Cognition changes one of those sides, the working model is:
-
-1. copy the real `credentials.toml` into the sandbox filesystem, and
-2. let the sandbox network policy confine where that credential can travel:
-   only the Devin endpoints in the kit allowlist are reachable.
-
-The credential is accessible to Devin and every process running as `agent` or
-root inside the microVM. Every task-specific host you allow becomes another
-possible destination for credential exfiltration. Use short-lived credentials,
-keep additional egress narrow, and remove sandboxes that no longer need access.
-
-### Run Devin as a sandbox agent
-
-The whole flow is standard `sbx` commands; the only Devin-specific step is
-placing the credential file. Create the sandbox from the kit:
 
 ```bash
-sbx create --kit ./sandbox-kit --name devin-myrepo devin ~/src/your-repo
+sbx policy log devin-your-repo
 ```
 
-Copy your credentials to Devin's data path inside the sandbox:
-
-```bash
-sbx cp ~/.local/share/devin/credentials.toml devin-myrepo:/home/agent/.local/share/devin/credentials.toml
-```
-
-Hand the file to the sandbox user with a restrictive mode:
-
-```bash
-sbx exec -u 0 devin-myrepo -- sh -c 'chown agent:agent /home/agent/.local/share/devin/credentials.toml && chmod 600 /home/agent/.local/share/devin/credentials.toml'
-```
-
-Attach to the interactive Devin session:
-
-```bash
-sbx run --name devin-myrepo
-```
-
-Or run one-shot prompts non-interactively:
-
-```bash
-sbx exec devin-myrepo -- devin --print -- 'Summarize this repository.'
-```
-
-No extra flags are needed: the kit already selects `swe-1.6` through
-`DEVIN_MODEL` (override it with `sbx run --env DEVIN_MODEL=your-model`) and
-skips Devin's workspace-trust prompt, since the sandbox itself is the trust
-boundary. Because the credential file is copied verbatim, both the current
-format (`devin_api_url`, `devin_webapp_host`) and the pre-deprecation Windsurf
-format work, including enterprise `api_server_url` values.
-
-#### Optional launcher script
-
-[scripts/devin-sandbox](scripts/devin-sandbox) automates the same sequence:
-create or safely reuse the sandbox, install the credentials, and attach. On
-top of the plain commands it verifies default-deny egress before copying the
-credential (fail closed) and derives collision-free sandbox names from the
-workspace path:
-
-```bash
-./scripts/devin-sandbox ~/src/your-repo
-```
-
-Use `--credentials PATH` for a different file, `--refresh` to update the
-credential in an existing sandbox, and `--no-attach` for scripted setups.
+Blocked hosts appear as "No matching allow rule (default deny)". Add
+task-specific destinations per sandbox with
+`sbx policy allow network --sandbox <name> <host>` rather than opening
+unrestricted egress.
 
 ### MCP gateway
 
-On startup the kit registers the sandbox MCP gateway in Devin's user scope
-(`devin mcp list` shows `mcp-gateway`). By default, the gateway uses dynamic
-mode: it preloads no servers, and Devin can discover and attach registrations
-through the gateway tools. You can also attach a registration from the host:
+The built-in agent registers the sandbox MCP gateway in Devin's user scope
+(`devin mcp list` shows `mcp-gateway`), so servers you manage with `sbx mcp`
+are reachable from inside the sandbox. Attach a registration from the host
+with `sbx mcp load <server> --sandbox devin-your-repo`, or preload a fixed set
+at creation with `sbx create --static-mcp notion,linear ...`. Enterprise
+tenants that enforce an MCP-server allowlist must approve the gateway URL
+before Devin will use it.
 
-```bash
-sbx mcp load notion --sandbox devin-your-repo
-```
+### Retired custom sandbox image
 
-To preload a fixed set when creating the sandbox, pass a comma-separated list
-(the launcher script forwards the same flag):
-
-```bash
-sbx create --kit ./sandbox-kit --static-mcp notion,linear --name devin-myrepo devin ~/src/your-repo
-```
-
-The static set cannot be changed by reattaching; use `sbx mcp load` for an
-existing sandbox. Enterprise tenants that enforce an MCP-server allowlist must
-approve the gateway URL before Devin will use it.
-
-### Egress policy
-
-The kit allowlist is the required Devin runtime set from
-[FIREWALL.md](FIREWALL.md) plus the two enterprise tenant patterns. Legacy
-Windsurf login hosts (`*.windsurf.com`, `*.codeiumdata.com`,
-`*.googleapis.com`, `apis.google.com`) are omitted now that Windsurf is
-deprecated, and error telemetry (Sentry) is deliberately not allowlisted;
-Devin handles the blocked reporter gracefully. Add task-specific destinations
-(package registries, source hosts, private services) per sandbox with
-`sbx policy allow network --sandbox <name> <host>` or through a reviewed kit
-change instead of opening unrestricted egress. Docker Sandboxes kits are
-experimental and may change between `sbx` releases.
+Earlier releases published a custom sandbox agent image under the `sandbox`
+and `sandbox-0.2.x` tags on GHCR and Docker Hub together with a full agent kit
+and a launcher script. Those tags remain available but are frozen at 0.2.1 and
+no longer built; use the built-in agent above instead.
 
 ## GitLab CI
 

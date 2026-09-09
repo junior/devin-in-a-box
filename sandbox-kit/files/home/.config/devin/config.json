@@ -5,6 +5,7 @@
   },
   "theme_mode": "dark",
   "attribution": false,
-  "skip_workspace_trust": true
+  "skip_workspace_trust": true,
+  "auto_update": false
 }
 
