@@ -13,8 +13,8 @@ jobs:
   static:
     runs-on: ubuntu-latest
     env:
-      SBX_VERSION: v0.42.1
-      SBX_LINUX_AMD64_SHA256: fe46facba420d1cb8b1dad57d5b182d6df9dadd46c324c2ca3ef574fb7eada6f
+      SBX_VERSION: v0.46.0
+      SBX_LINUX_AMD64_SHA256: edd86e2f21559e190723fd884c3a1dced161a555afdff85c5921ed45e7d6d56e
     steps:
       - uses: actions/checkout@v7
       - name: Validate entrypoint
@@ -38,6 +38,6 @@ jobs:
           tar -xzf "$archive" --strip-components=1 -C "$destination" docker-sbx/sbx
           chmod 755 "$destination/sbx"
       - name: Validate sandbox kit schema
-        run: $HOME/.cache/sbx/$SBX_VERSION/sbx kit validate ./sandbox-kit
+        run: '"$HOME/.cache/sbx/$SBX_VERSION/sbx" kit validate ./sandbox-kit'
       - name: Validate JSON
         run: jq empty devin-config.json sandbox-kit/files/home/.config/devin/config.json

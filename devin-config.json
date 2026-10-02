@@ -3,5 +3,6 @@
   "shell": {
     "setup_complete": true
   },
-  "theme_mode": "dark"
+  "theme_mode": "dark",
+  "auto_update": false
 }

@@ -36,6 +36,7 @@ flowchart LR
 - **Clean output:** suppresses first-run UI so stdout stays machine-readable.
 - **No baked credentials:** authentication is mounted only at runtime.
 - **Predictable cost:** defaults to `swe-1.6`, with an explicit model override.
+- **Immutable CLI:** no background self-updates at run time; pin a release with `DEVIN_VERSION`.
 - **Hardened base:** built on Docker Hardened Debian 13 (Trixie).
 - **Pipeline handoff:** writes a response and optional ATIF export as artifacts.
 - **Enterprise-friendly:** includes model-control and firewall guidance.
@@ -107,13 +108,12 @@ Input precedence is `DEVIN_PROMPT_FILE`, then `DEVIN_PROMPT`, then stdin.
 
 ## Docker Sandboxes
 
-[Docker Sandboxes](https://docs.docker.com/ai/sandboxes/) ships a built-in
-[`devin` agent](https://docs.docker.com/ai/sandboxes/agents/devin/) as of
-`sbx` 0.42, so no custom image, agent kit, or launcher script is needed
-anymore. The built-in agent provides the template image, the credential
-capture and injection, the Devin runtime allowlist, and the MCP gateway
-registration. This repository adds an optional mixin kit with the defaults
-this project cares about.
+[Docker Sandboxes](https://docs.docker.com/ai/sandboxes/) has a built-in
+[`devin` agent](https://docs.docker.com/ai/sandboxes/agents/devin/), so no
+custom image is needed. It keeps your Devin key on the host: the sandbox only
+sees a placeholder, and the sandbox proxy adds the real key to Devin's
+requests. This project publishes an optional kit with defaults the built-in
+agent lacks.
 
 ### Run Devin in a sandbox
 
@@ -122,16 +122,50 @@ sbx run devin ~/src/your-repo
 ```
 
 On the first run Devin asks you to sign in inside the sandbox: open the printed
-`app.devin.ai` link, then paste the code back. Docker Sandboxes captures the
-resulting credential on the host as the `devin` service secret and provisions
-every later sandbox with it automatically. Re-attach later with
-`sbx run --name devin-your-repo`.
+`app.devin.ai` link and paste the code back. Docker Sandboxes stores the
+credential on the host as the `devin` service secret and reuses it for every
+later sandbox. Re-attach with `sbx run --name devin-your-repo`.
 
-If this machine already has a `credentials.toml`, seed the secret instead of
-signing in interactively:
+If this machine already has a `credentials.toml`, store its key instead of
+signing in:
 
 ```bash
 sed -nE 's/^windsurf_api_key = "([^"]+)"/\1/p' ~/.local/share/devin/credentials.toml | sbx secret set devin
+```
+
+### Add the project defaults
+
+The [Devin in a Box kit](https://hub.docker.com/r/junior/devin-in-a-box-kit)
+is a mixin published to Docker Hub with every release. Add it when you create
+the sandbox:
+
+```bash
+sbx run devin --kit junior/devin-in-a-box-kit:latest ~/src/your-repo
+```
+
+It adds:
+
+- `DEVIN_MODEL=swe-1.6`, which Devin uses as the default for `--model`
+  (override with `--env DEVIN_MODEL=your-model`);
+- a complete Devin config that keeps background self-updates off, skips the
+  first-run wizard and the workspace-trust prompt, and disables commit
+  attribution. The built-in agent seeds only `auto_update: false`, and Devin's
+  first run rewrites that file without it, after which the CLI updates itself
+  inside the sandbox.
+
+Kits apply when a sandbox is created. Docker Hub is the remote kit source
+Docker Sandboxes allows by default, so no settings change is needed. Pin a
+release tag such as `:0.3.0` for repeatable sandboxes, or use
+`--kit ./sandbox-kit` from a clone of this repository.
+
+Releases are signed in CI with GitHub's OIDC identity. Verify one before
+using it:
+
+```bash
+sbx kit verify \
+  --certificate-identity-regexp '^https://github\.com/junior/devin-in-a-box/\.github/workflows/publish\.yml@refs/tags/v' \
+  --certificate-oidc-issuer https://token.actions.githubusercontent.com \
+  junior/devin-in-a-box-kit:latest
 ```
 
 ### One-shot prompts
@@ -139,57 +173,35 @@ sed -nE 's/^windsurf_api_key = "([^"]+)"/\1/p' ~/.local/share/devin/credentials.
 Create the sandbox without attaching, then run prompts with `sbx exec`:
 
 ```bash
-sbx create --name devin-your-repo devin ~/src/your-repo
+sbx create --kit junior/devin-in-a-box-kit:latest --name devin-your-repo devin ~/src/your-repo
 ```
-
-```bash
-sbx exec devin-your-repo -- devin --respect-workspace-trust=false --print -- 'Summarize this repository.'
-```
-
-The built-in agent passes `--respect-workspace-trust=false` in its own
-interactive entrypoint; `sbx exec` bypasses the entrypoint, so the flag is
-repeated here. With the mixin below it is not needed.
-
-### Optional mixin: project defaults
-
-`sandbox-kit/` is a mixin that layers this project's defaults on the built-in
-agent:
-
-- `DEVIN_MODEL=swe-1.6` for predictable cost (override with
-  `--env DEVIN_MODEL=your-model`);
-- the enterprise tenant hosts `*.enterprise.windsurf.com` and
-  `*.devinenterprise.com` in the allowlist, to pair with
-  `--env WINDSURF_API_SERVER_URL=https://your-tenant`;
-- a Devin config that skips the first-run wizard and the workspace-trust
-  prompt, disables commit attribution, and keeps Docker's `auto_update=false`.
-
-```bash
-sbx run --kit ./sandbox-kit devin ~/src/your-repo
-```
-
-With the mixin, one-shot prompts need no flags:
 
 ```bash
 sbx exec devin-your-repo -- devin --print -- 'Summarize this repository.'
 ```
 
-The mixin only takes effect when the sandbox is created. Validate it with
-`sbx kit validate ./sandbox-kit`.
+Without the kit, add `--respect-workspace-trust=false` before `--print`.
+`sbx exec` bypasses the agent's entrypoint, which normally passes that flag.
 
 ### How the credential is handled
 
-Devin CLI's wire protocol embeds the API key inside each request body, so the
-sandbox proxy cannot keep the key on the host and inject it into headers the
-way it does for other agents. Docker's agent instead captures the token during
-the in-sandbox login, stores it on the host, and renders it into
-`~/.local/share/devin/credentials.toml` inside each new sandbox. The
-credential therefore resides in the sandbox filesystem, readable by Devin and
-by any process running as `agent` or root in that microVM. The sandbox network
-policy is what confines it: only the Devin endpoints in the built-in allowlist
-(plus the Ubuntu package mirrors and `download.docker.com`) are reachable.
-Every additional host you allow is another possible destination for the
-credential, so keep task-specific egress narrow, prefer short-lived
-credentials, and remove sandboxes that no longer need access.
+Verified with `sbx` 0.46 and Devin CLI 3000.11.3: inside the sandbox,
+`~/.local/share/devin/credentials.toml` holds the placeholder
+`devin-proxy-managed` instead of the key, and the key appears nowhere in the
+sandbox's files or environment. The proxy substitutes the real key as a
+bearer token on requests to `server.codeium.com` and `api.devin.ai`.
+
+What remains:
+
+- A process inside the sandbox cannot read the key, but it can still use your
+  Devin account through the proxy while the sandbox runs. Keep egress narrow
+  and remove sandboxes that no longer need access.
+- Signing in from inside a sandbox passes Devin's short-lived sign-in token
+  through it, and the key Devin then writes stays on that sandbox's disk until
+  the sandbox is recreated, as Docker's own Devin kit documents. Storing the
+  key with `sbx secret set devin` avoids both.
+- The agent injects the key only for `server.codeium.com` and `api.devin.ai`.
+  Accounts on a dedicated tenant host need the CI image instead.
 
 ### Make the allowlist enforceable
 
@@ -203,8 +215,8 @@ sbx policy init deny-all
 
 `sbx policy init` is a one-time command; to replace an existing allow-all or
 balanced policy, run `sbx policy reset` first. Resetting is machine-wide and
-stops running sandboxes, so review the impact before confirming. Verify a
-sandbox before trusting it with credentials, and audit decisions afterwards:
+stops running sandboxes, so review the impact before confirming. Check a
+sandbox's effective policy, and audit decisions afterwards:
 
 ```bash
 sbx policy check network --sandbox devin-your-repo example.com
@@ -264,7 +276,7 @@ that immutable image.
 
 The image defaults to `swe-1.6`, but `DEVIN_MODEL` makes planned migrations
 possible when your Enterprise agreement changes. The environment variable is
-operational configuration—not a security boundary.
+operational configuration, not a security boundary.
 
 For actual enforcement, use **Settings → Enterprise → Windsurf → Devin CLI
 settings** and:
@@ -306,9 +318,19 @@ docker build \
   --tag devin-in-a-box:local .
 ```
 
-The Dockerfile uses Devin's latest-version installer. For a controlled
-production rollout, mirror and checksum an approved installer/binary version in
-your artifact registry.
+The Dockerfile installs the latest Devin CLI release by default. Pin a release
+for repeatable builds:
+
+```bash
+docker build --build-arg DEVIN_VERSION=3000.11.3 --tag devin-in-a-box:local .
+```
+
+A pinned build uses Cognition's versioned installer on `static.devin.ai`, which
+verifies the bundle checksum, and fails if the installed CLI reports a
+different version. Find the current release with
+`curl -fsS https://static.devin.ai/cli/current/manifest.json | jq -r .version`.
+Either way, the image turns off Devin's background self-update, so a running
+container never downloads a newer CLI.
 
 ## Network policy
 
@@ -322,9 +344,13 @@ The GitHub Actions workflow publishes multi-platform images to:
 - `ghcr.io/junior/devin-in-a-box`
 - `docker.io/junior/devin-in-a-box`
 
-Tagged releases such as `v0.1.0` produce semantic-version tags and provenance.
-Repository maintainers must configure `DHI_USERNAME`, `DHI_PASSWORD`,
-`DOCKERHUB_USERNAME`, and `DOCKERHUB_TOKEN` as GitHub Actions secrets.
+Tagged releases such as `v0.3.0` produce semantic-version tags with SBOM and
+provenance attestations. They also publish the signed Docker Sandboxes kit to
+`docker.io/junior/devin-in-a-box-kit`; the release tag must match `version` in
+`sandbox-kit/spec.yaml`. Repository maintainers must configure `DHI_USERNAME`,
+`DHI_PASSWORD`, `GHCR_USERNAME`, `GHCR_TOKEN`, `DOCKERHUB_USERNAME`, and
+`DOCKERHUB_TOKEN` as GitHub Actions secrets. The Docker Hub token needs read and
+write access, because publishing the kit also re-points its `latest` tag.
 
 ## Security
 

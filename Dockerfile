@@ -2,6 +2,7 @@ ARG BASE_IMAGE=dhi.io/debian-base:trixie-dev
 FROM ${BASE_IMAGE}
 
 ARG DEVIN_INSTALL_URL=https://cli.devin.ai/install.sh
+ARG DEVIN_VERSION=
 ARG VERSION=dev
 ARG VCS_REF=unknown
 
@@ -38,11 +39,24 @@ ENV HOME=/home/devin \
 
 # The official installer ends by launching the interactive setup wizard.
 # Remove only that exact final command; authentication is injected at run time.
-RUN curl --fail --silent --show-error --location "$DEVIN_INSTALL_URL" --output /tmp/devin-install.sh \
+# The grep fails the build if a new installer drops or renames that line,
+# instead of letting the wizard run. DEVIN_VERSION selects Cognition's
+# versioned copy of the same installer, which differs only in PINNED_VERSION.
+RUN install_url="$DEVIN_INSTALL_URL" \
+    && if [[ -n "$DEVIN_VERSION" ]]; then \
+        install_url="https://static.devin.ai/cli/${DEVIN_VERSION}/setup.sh"; \
+    fi \
+    && curl --fail --silent --show-error --location "$install_url" --output /tmp/devin-install.sh \
+    && grep -qxF '"$VERSION_DIR/bin/$COMPILED_BIN_NAME" setup' /tmp/devin-install.sh \
     && sed -i '/^"\$VERSION_DIR\/bin\/\$COMPILED_BIN_NAME" setup$/d' /tmp/devin-install.sh \
     && bash /tmp/devin-install.sh \
     && rm /tmp/devin-install.sh \
-    && test -x /home/devin/.local/bin/devin
+    && installed="$(/home/devin/.local/bin/devin --version)" \
+    && printf 'Installed %s\n' "$installed" \
+    && if [[ -n "$DEVIN_VERSION" && "$(awk '{print $2}' <<<"$installed")" != "$DEVIN_VERSION" ]]; then \
+        printf 'Expected Devin CLI %s, got: %s\n' "$DEVIN_VERSION" "$installed" >&2; \
+        exit 1; \
+    fi
 
 WORKDIR /workspace
 

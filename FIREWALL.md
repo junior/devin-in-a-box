@@ -10,8 +10,8 @@ control, and task-selected package registries are organization-specific.
 | --- | --- | --- |
 | `dhi.io` | TCP 443 / HTTPS | Pull Docker Hardened Images and DHI-hardened Debian packages; Docker documents that builders must authenticate to this registry. |
 | `deb.debian.org` | TCP 443 / HTTPS | Debian Trixie package indexes and packages not supplied by DHI. The Dockerfile rewrites the base image's default HTTP sources to HTTPS. |
-| `cli.devin.ai` | TCP 443 / HTTPS | Download the official Devin CLI installer. |
-| `static.devin.ai` | TCP 443 / HTTPS | Installer manifest, checksummed CLI bundle, and CLI updates. The current installer explicitly fetches these resources from this host. |
+| `cli.devin.ai` | TCP 443 / HTTPS | Download the official Devin CLI installer. Not needed when `DEVIN_VERSION` pins a release. |
+| `static.devin.ai` | TCP 443 / HTTPS | Installer manifest and checksummed CLI bundle, plus the versioned installer when `DEVIN_VERSION` pins a release. |
 
 Depending on how DHI authentication is configured, your builder may also need
 Docker's authentication endpoints. If you mirror the base image internally,
@@ -24,7 +24,7 @@ registry endpoints.
 | --- | --- | --- |
 | `api.devin.ai` | TCP 443 / HTTPS and WSS | Cognition API backend and live WebSocket traffic. |
 | `app.devin.ai` | TCP 443 / HTTPS | Cognition web application, authentication/session URLs, and resource downloads. |
-| `static.devin.ai` | TCP 443 / HTTPS | CLI update metadata and binaries. |
+| `static.devin.ai` | TCP 443 / HTTPS | CLI version checks. The image turns off background self-update, so no CLI binaries are downloaded at run time. |
 | `server.codeium.com` | TCP 443 / HTTPS and WSS | Model/backend traffic used by Cognition clients. This host is present in the current CLI and is covered by Devin's published `*.codeium.com` backend allowlist. |
 | `unleash.codeium.com` | TCP 443 / HTTPS | Feature configuration used by Cognition clients; covered by the same published `*.codeium.com` allowlist. |
 
@@ -38,6 +38,10 @@ If wildcard policies are allowed, Devin's published guidance says
 `*.devin.ai` covers `app.devin.ai` and `api.devin.ai`. A host-specific policy
 is tighter. WebSocket upgrade requests must be allowed through the proxy for
 `api.devin.ai`.
+
+Devin CLI also reports crashes to a Sentry ingest host (`*.ingest.us.sentry.io`).
+That host is not required: Devin works normally with it blocked, so a
+default-deny policy can leave it out.
 
 ## Only when those features are used
 

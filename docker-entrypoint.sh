@@ -36,7 +36,9 @@ fi
 # SWE-1.6 is the default included model. DEVIN_MODEL allows an intentional
 # migration later; the enterprise model allowlist remains the enforcement layer.
 readonly selected_model="${DEVIN_MODEL:-swe-1.6}"
-args=(--model "$selected_model" --print --respect-workspace-trust false)
+# The flag takes an optional value; the = form keeps "false" from ever being
+# parsed as a positional prompt argument.
+args=(--model "$selected_model" --print --respect-workspace-trust=false)
 
 if [[ -n "${DEVIN_PERMISSION_MODE:-}" ]]; then
   case "$DEVIN_PERMISSION_MODE" in

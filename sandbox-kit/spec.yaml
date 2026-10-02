@@ -3,27 +3,27 @@ kind: mixin
 name: devin-in-a-box
 version: 0.3.0
 displayName: Devin in a Box defaults
-description: Cost and enterprise defaults layered on Docker's built-in Devin agent.
+description: Model pin and durable Devin settings for Docker's built-in Devin agent.
 sourceURL: https://github.com/junior/devin-in-a-box
 licenses:
   - MIT
 
-# Docker's built-in devin agent already provides the image, the credential
-# capture and injection, the MCP gateway registration, and the Devin runtime
-# allowlist. This mixin only adds what this project cares about on top:
-# a pinned default model, the enterprise tenant hosts, and a Devin config
-# (files/home/.config/devin/config.json) that skips the first-run wizard and
-# the workspace-trust prompt, disables commit attribution, and keeps Docker's
-# auto_update=false intact across Devin's first-run config rewrite.
+# Docker's built-in devin agent already provides the image, the proxy-held
+# credential, the MCP gateway registration, and the Devin runtime allowlist.
+# This mixin adds two things on top:
+#
+# - DEVIN_MODEL, which Devin CLI reads as the default for --model.
+# - files/home/.config/devin/config.json, a complete Devin config. The built-in
+#   agent seeds only {"auto_update": false}, and Devin's first run rewrites
+#   that file without the key, after which the CLI fetches updates from
+#   static.devin.ai inside the sandbox. A config that already records the
+#   finished first-run setup is left alone, so auto_update stays off; it also
+#   skips the workspace-trust prompt (the sandbox is the trust boundary) and
+#   commit attribution.
+#
+# No network hosts are added. The built-in agent injects the credential only
+# for server.codeium.com and api.devin.ai, so allowing dedicated-tenant hosts
+# here would widen egress without making tenant sign-in work.
 environment:
   variables:
     DEVIN_MODEL: swe-1.6
-
-# Enterprise tenants: the built-in allowlist covers the standard endpoints
-# only. Both tenant patterns from FIREWALL.md are added here; pair them with
-# --env WINDSURF_API_SERVER_URL=https://<your-tenant> at run time.
-permissions:
-  network:
-    allow:
-      - "*.enterprise.windsurf.com"
-      - "*.devinenterprise.com"
