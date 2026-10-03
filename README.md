@@ -151,7 +151,7 @@ It adds:
   first-run wizard and the workspace-trust prompt, and disables commit
   attribution. The built-in agent writes its `auto_update: false` seed only if
   the file is missing, but its template image already ships one, so the seed
-  never lands and the CLI updates itself inside the sandbox. The fix for
+  never lands and background self-update stays on. The fix for
   Docker's contrib Devin kit is proposed in
   [docker/sbx-kits-contrib#343](https://github.com/docker/sbx-kits-contrib/pull/343).
 

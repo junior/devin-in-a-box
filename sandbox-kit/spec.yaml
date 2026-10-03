@@ -16,8 +16,8 @@ licenses:
 # - files/home/.config/devin/config.json, a complete Devin config. The built-in
 #   agent's {"auto_update": false} seed is written only if the file is
 #   missing, but the agent's template image already ships the file as
-#   {"version": 1}, so the seed never lands and the CLI keeps updating itself
-#   inside the sandbox. Static files replace the image's copy when the sandbox
+#   {"version": 1}, so the seed never lands and background self-update
+#   stays on. Static files replace the image's copy when the sandbox
 #   is created, and Devin keeps the key on later runs, so auto_update stays
 #   off. The config also skips the first-run wizard, the workspace-trust
 #   prompt (the sandbox is the trust boundary), and commit attribution.
