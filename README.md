@@ -149,9 +149,11 @@ It adds:
   (override with `--env DEVIN_MODEL=your-model`);
 - a complete Devin config that keeps background self-updates off, skips the
   first-run wizard and the workspace-trust prompt, and disables commit
-  attribution. The built-in agent seeds only `auto_update: false`, and Devin's
-  first run rewrites that file without it, after which the CLI updates itself
-  inside the sandbox.
+  attribution. The built-in agent writes its `auto_update: false` seed only if
+  the file is missing, but its template image already ships one, so the seed
+  never lands and the CLI updates itself inside the sandbox. The fix for
+  Docker's contrib Devin kit is proposed in
+  [docker/sbx-kits-contrib#343](https://github.com/docker/sbx-kits-contrib/pull/343).
 
 Kits apply when a sandbox is created. Docker Hub is the remote kit source
 Docker Sandboxes allows by default, so no settings change is needed. Pin a

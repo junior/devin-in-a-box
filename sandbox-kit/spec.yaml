@@ -14,12 +14,13 @@ licenses:
 #
 # - DEVIN_MODEL, which Devin CLI reads as the default for --model.
 # - files/home/.config/devin/config.json, a complete Devin config. The built-in
-#   agent seeds only {"auto_update": false}, and Devin's first run rewrites
-#   that file without the key, after which the CLI fetches updates from
-#   static.devin.ai inside the sandbox. A config that already records the
-#   finished first-run setup is left alone, so auto_update stays off; it also
-#   skips the workspace-trust prompt (the sandbox is the trust boundary) and
-#   commit attribution.
+#   agent's {"auto_update": false} seed is written only if the file is
+#   missing, but the agent's template image already ships the file as
+#   {"version": 1}, so the seed never lands and the CLI keeps updating itself
+#   inside the sandbox. Static files replace the image's copy when the sandbox
+#   is created, and Devin keeps the key on later runs, so auto_update stays
+#   off. The config also skips the first-run wizard, the workspace-trust
+#   prompt (the sandbox is the trust boundary), and commit attribution.
 #
 # No network hosts are added. The built-in agent injects the credential only
 # for server.codeium.com and api.devin.ai, so allowing dedicated-tenant hosts
