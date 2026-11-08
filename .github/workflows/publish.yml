@@ -164,10 +164,21 @@ jobs:
           fi
           oras tag "$KIT_REPOSITORY@$digest" latest
           sbx kit sign "$KIT_REPOSITORY@$digest"
-          sbx kit verify \
-            --certificate-identity "https://github.com/$GITHUB_WORKFLOW_REF" \
-            --certificate-oidc-issuer https://token.actions.githubusercontent.com \
-            "$KIT_REPOSITORY@$digest"
+          # Docker Hub can take a few seconds to list a signature it has just
+          # stored: v0.4.0's verify, run 0.7s after signing, said "kit is not
+          # signed" and passed a few minutes later. Retry for up to a minute;
+          # a signature from any other identity still fails every attempt.
+          for attempt in 1 2 3 4 5 6 7; do
+            if sbx kit verify \
+              --certificate-identity "https://github.com/$GITHUB_WORKFLOW_REF" \
+              --certificate-oidc-issuer https://token.actions.githubusercontent.com \
+              "$KIT_REPOSITORY@$digest"; then
+              exit 0
+            fi
+            echo "verify attempt $attempt failed; retrying in 10s" >&2
+            sleep 10
+          done
+          exit 1
 
       - name: Sign out of sbx
         if: always()
