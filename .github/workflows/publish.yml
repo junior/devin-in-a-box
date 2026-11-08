@@ -84,13 +84,20 @@ jobs:
       contents: read
       id-token: write
     env:
-      SBX_VERSION: v0.46.0
-      SBX_LINUX_AMD64_SHA256: edd86e2f21559e190723fd884c3a1dced161a555afdff85c5921ed45e7d6d56e
+      SBX_VERSION: v0.51.0
+      # GitHub's digest for the release asset, which the asset's SLSA
+      # provenance (DockerSandboxes-linux-amd64.provenance.json) names too.
+      SBX_LINUX_AMD64_SHA256: 5d605d94dd297a796188aad4095a4a2f22368c8f270f2dac49f2ede453d4d3ec
       KIT_REPOSITORY: docker.io/${{ secrets.DOCKERHUB_USERNAME }}/devin-in-a-box-kit
 
     steps:
       - name: Check out repository
         uses: actions/checkout@v7
+
+      # The v3 kit is built for both platforms and pushed with its provenance
+      # and SBOM, which needs a builder that is not the plain docker driver.
+      - name: Set up Buildx
+        uses: docker/setup-buildx-action@v4
 
       - name: Install pinned sbx
         run: |
@@ -106,7 +113,7 @@ jobs:
       - name: Set up ORAS
         uses: oras-project/setup-oras@v2
         with:
-          version: "1.3.3"
+          version: "1.3.6"
 
       - name: Sign in to Docker Hub
         uses: docker/login-action@v4
@@ -122,30 +129,41 @@ jobs:
           DOCKERHUB_TOKEN: ${{ secrets.DOCKERHUB_TOKEN }}
         run: printf '%s' "$DOCKERHUB_TOKEN" | sbx login --username "$DOCKERHUB_USERNAME" --password-stdin
 
-      - name: Validate kit against the release tag
+      # The build below validates the descriptor (the docker/sandbox-kit:3
+      # frontend decodes it strictly); this only ties its version to the tag.
+      - name: Check the kit version against the release tag
         run: |
-          sbx kit validate ./sandbox-kit
-          kit_version="$(sed -nE 's/^version:[[:space:]]*"?([^"[:space:]]+)"?.*/\1/p' sandbox-kit/spec.yaml)"
+          kit_version="$(sed -nE 's/^version:[[:space:]]*"?([^"[:space:]]+)"?.*/\1/p' sandbox-kit/devin-in-a-box.yaml)"
           if [ "$kit_version" != "${GITHUB_REF_NAME#v}" ]; then
-            echo "sandbox-kit/spec.yaml version $kit_version does not match tag $GITHUB_REF_NAME" >&2
+            echo "sandbox-kit/devin-in-a-box.yaml version $kit_version does not match tag $GITHUB_REF_NAME" >&2
             exit 1
           fi
 
-      # Push once and re-point latest by digest: every push stamps a creation
-      # time, so a second push would mint a different digest and signature.
-      # A re-run reuses an already published version instead of re-pushing it.
+      # A v3 kit is an image: the descriptor rides in the manifest annotation
+      # and the layers are the content, so one push publishes both. Build and
+      # push once, then re-point latest by digest and sign that digest: every
+      # build stamps a creation time, so a second build would mint a different
+      # digest. A re-run reuses an already published version instead of
+      # rebuilding it.
       - name: Publish signed kit
         run: |
           ref="$KIT_REPOSITORY:${GITHUB_REF_NAME#v}"
           digest="$(oras manifest fetch --descriptor "$ref" 2>/dev/null | jq -r '.digest // empty' || true)"
           if [ -n "$digest" ]; then
-            echo "$ref is already published as $digest; signing it instead of re-pushing"
-            sbx kit sign "$KIT_REPOSITORY@$digest"
+            echo "$ref is already published as $digest; signing it instead of rebuilding"
           else
-            sbx kit push ./sandbox-kit "$ref" --sign
-            digest="$(oras manifest fetch --descriptor "$ref" | jq -r .digest)"
+            docker buildx build sandbox-kit \
+              --file sandbox-kit/devin-in-a-box.yaml \
+              --platform linux/amd64,linux/arm64 \
+              --provenance mode=max \
+              --sbom true \
+              --tag "$ref" \
+              --push \
+              --metadata-file "$RUNNER_TEMP/kit-build.json"
+            digest="$(jq -r '."containerimage.digest"' "$RUNNER_TEMP/kit-build.json")"
           fi
           oras tag "$KIT_REPOSITORY@$digest" latest
+          sbx kit sign "$KIT_REPOSITORY@$digest"
           sbx kit verify \
             --certificate-identity "https://github.com/$GITHUB_WORKFLOW_REF" \
             --certificate-oidc-issuer https://token.actions.githubusercontent.com \
@@ -153,4 +171,4 @@ jobs:
 
       - name: Sign out of sbx
         if: always()
-        run: sbx logout --yes || true
+        run: sbx logout --force || true

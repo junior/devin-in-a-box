@@ -1,0 +1,83 @@
+# syntax=docker/sandbox-kit:3
+# Devin in a Box defaults: a v3 MIXIN for Docker Sandboxes' devin kit, the one
+# `sbx run devin` resolves to from sbx 0.51 on (docker.io/sbx/devin). It adds
+# two things on top of that kit, the same two the v2 mixin (kit 0.3.x) added
+# on top of the old built-in agent:
+#
+# - DEVIN_MODEL, which Devin CLI reads as the default for --model. It is the
+#   recipe's ENV (devin-in-a-box.dockerfile): a mixin's ENV merges into the
+#   composed image, while its ENTRYPOINT, CMD, USER and WORKDIR are ignored.
+#   The first kit to set a variable owns it, and the devin kit does not set
+#   DEVIN_MODEL, so the merge cannot conflict.
+# - A complete ~/.config/devin/config.json, copied into place by the install
+#   hook below from /usr/local/share/devin-in-a-box/config.json, which the
+#   recipe ships.
+#
+# No network hosts and no credential: the devin kit carries Devin's egress,
+# the passthrough credential and the MCP gateway registration. Allowing a
+# dedicated-tenant host here would widen egress without making a tenant
+# sign-in work, because the credential is injected only for
+# server.codeium.com and api.devin.ai.
+schemaVersion: "3"
+kind: mixin
+displayName: Devin in a Box defaults
+description: >-
+  Model pin and durable Devin settings for Docker Sandboxes' devin kit:
+  background self-update off, the first-run wizard and the workspace-trust
+  prompt skipped, and no commit attribution.
+sourceUrl: https://github.com/junior/devin-in-a-box
+licenses:
+  - MIT
+
+# The kit's own release number, not Devin's: this kit installs nothing, so it
+# provides no Devin version. publish.yml checks it against the tag.
+version: "0.4.0"
+
+provides: ["devin-in-a-box"]
+
+# MIGRATION NOTE: v2 declared no requirement. The config below means nothing
+# to another agent, so the mixin now refuses to compose onto a kit that does
+# not provide Devin.
+requires: ["devin"]
+
+capabilities:
+  - type: com.docker.sandbox/lifecycle@1
+    config:
+      install:
+        # A complete Devin config (config.json beside this file), copied into
+        # place once, when the sandbox is created.
+        #
+        # The devin kit seeds {"auto_update": false} with `overwrite: false`,
+        # which writes it only when the file is missing. Its image already
+        # holds a config.json that Cognition's installer writes at build time,
+        # so that seed never lands and background self-update stays on. This
+        # hook replaces the file whatever the image holds, so self-update is
+        # off however the devin kit's image is built.
+        #
+        # A hook, not a `files` entry: the devin kit declares a file at this
+        # path, and composition rejects two kits declaring the same file path.
+        # Nor an overlay file: two kits that ship the same path also fail when
+        # composed, and an overlay under /home/agent would have to reproduce
+        # the owner of every directory above it. The order works out either
+        # way: a provider's hooks run before its requirers', and the devin
+        # kit's seed skips an existing file whether it is written before this
+        # hook or after it. Install hooks finish before the entrypoint first
+        # runs, so Devin never starts without this config.
+        #
+        # MIGRATION NOTE: v2 shipped the file as a static file, which replaced
+        # the image's copy when the sandbox was created; this does the same at
+        # the same moment. Devin adds its own keys to the file at run time, and
+        # an edit made inside the sandbox lasts, as it did in v2.
+        #
+        # The settings: version 1 and shell.setup_complete skip the first-run
+        # wizard; skip_workspace_trust skips the trust prompt, because the
+        # sandbox is the trust boundary; attribution false leaves commits
+        # without a Devin trailer; auto_update false keeps the CLI the sandbox
+        # started with. Together they keep `sbx exec <sandbox> devin --print`
+        # free of flags. The hook reads only HOME, which every hook gets.
+        - command:
+            - sh
+            - -c
+            - mkdir -p "$HOME/.config/devin" && cp /usr/local/share/devin-in-a-box/config.json "$HOME/.config/devin/config.json"
+          user: agent
+          description: Copy the complete Devin config into place, with self-update off
