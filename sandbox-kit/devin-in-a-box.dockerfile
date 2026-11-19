@@ -11,9 +11,10 @@
 # models the account can use.
 #
 # config.json lands under /usr/local/share, not in ~/.config/devin: two kits
-# that ship the same path fail when sbx composes them, and the devin kit's
-# image already holds ~/.config/devin/config.json. The descriptor's install
-# hook copies it into place.
+# that ship the same path fail when sbx composes them, earlier builds of the
+# devin kit's image shipped ~/.config/devin/config.json, and an overlay under
+# /home/agent would have to reproduce the owner of every directory above it.
+# The descriptor's install hook copies it into place.
 #
 # No --chmod on the COPY: BuildKit applies that mode to the parent directories
 # it creates as well, and a mixin's directory entries replace the base's, so

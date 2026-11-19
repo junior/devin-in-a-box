@@ -48,21 +48,22 @@ capabilities:
         # place once, when the sandbox is created.
         #
         # The devin kit seeds {"auto_update": false} with `overwrite: false`,
-        # which writes it only when the file is missing. Its image already
-        # holds a config.json that Cognition's installer writes at build time,
-        # so that seed never lands and background self-update stays on. This
-        # hook replaces the file whatever the image holds, so self-update is
-        # off however the devin kit's image is built.
+        # which writes it only when the file is missing. Earlier builds of its
+        # image already held a config.json that Cognition's installer writes
+        # at build time, so that seed never landed there and background
+        # self-update stayed on. The Docker Hardened Images build ships none.
+        # This hook replaces the file whatever the image holds, so self-update
+        # is off however the devin kit's image is built.
         #
         # A hook, not a `files` entry: the devin kit declares a file at this
         # path, and composition rejects two kits declaring the same file path.
         # Nor an overlay file: two kits that ship the same path also fail when
         # composed, and an overlay under /home/agent would have to reproduce
         # the owner of every directory above it. The order works out either
-        # way: a provider's hooks run before its requirers', and the devin
-        # kit's seed skips an existing file whether it is written before this
-        # hook or after it. Install hooks finish before the entrypoint first
-        # runs, so Devin never starts without this config.
+        # way: a provider's hooks run before its requirers', a seed written
+        # before this hook is replaced by it, and one written after it finds
+        # the file and skips it. Install hooks finish before the entrypoint
+        # first runs, so Devin never starts without this config.
         #
         # MIGRATION NOTE: v2 shipped the file as a static file, which replaced
         # the image's copy when the sandbox was created; this does the same at
